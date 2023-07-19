@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - fake-bq
+    environment:
+      - STORAGE_EMULATOR_HOST=http://fake-bq:9050
+    command: java -cp /app/minimal.jar repro.Minimal 
+
+  fake-gcs:
+    image: fsouza/fake-gcs-server
+    ports:
+      - "4443:4443"
+    volumes:
+      - ./gcs-data:/data
+    environment:
+      EXTERNAL_URL: "http://fake-gcs:4443"
+    command: [ "-data", "/data", "-scheme", "http", "-port", "4443",  "-external-url", "http://fake-gcs:4443", "-backend", "memory",  "-filesystem-root", "./data" ]
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4443/storage/v1/b" ]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+
+  fake-bq:
+    image: ghcr.io/goccy/bigquery-emulator:latest
+    environment:
+      STORAGE_EMULATOR_HOST: "http://fake-gcs:4443"
+    ports:
+      - "9050:9050" # HTTP
+    volumes:
+      - './bq-data:/data'
+    working_dir: /work
+    command: |
+      --project=test-project --data-from-yaml=/data/dataset.yml
+
